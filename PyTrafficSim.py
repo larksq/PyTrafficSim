@@ -4,11 +4,11 @@ import random
 import time
 import math
 import numpy as np
-import VehicleModels
-import MotionPlanning
-import DefaultMap_4ways
-import BasicPolicy
-import BasicController
+from vehicle_model import VehicleModels
+from motion_planning import MotionPlanning
+from map import DefaultMap_4ways
+from policy import BasicPolicy
+from controller import BasicController
 import LaneChooser
 
 # max_steer = np.radians(30.0)  # [rad] max steering angle
