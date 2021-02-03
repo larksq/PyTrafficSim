@@ -7,7 +7,6 @@ import numpy as np
 from vehicle_model import VehicleModels
 from motion_planning import MotionPlanning
 from map import DefaultMap_4ways
-from map import DefaultMap_4ways_WithLeftTurn
 from policy import BasicPolicy
 from controller import BasicController
 import LaneChooser
@@ -148,8 +147,7 @@ class Agent:
 
 class IntersectionSim:
     def __init__(self, win, map_cls=DefaultMap_4ways.Map, scale=15,
-                 frame_rate=30.0, window_h=1000, window_w=1000, extend=15, trajectory=True, spawn_vertical_margin=5,
-                 collision_speculate_skip_rate=15, speed_decrease_when_crowded=1.5):
+                 frame_rate=30.0, window_h=1000, window_w=1000, extend=15, trajectory=True):
         self.map = map_cls()
         self.scale = scale
         self.win = win
@@ -166,15 +164,12 @@ class IntersectionSim:
         self.traffic_lights = self.init_traffic_lights_from_map()
         self.finished_agent = 0
         self.crash_time = 0
-        self.spawn_vertical_margin = spawn_vertical_margin
-        self.speed_decrease_when_crowded = speed_decrease_when_crowded  # divide 1.5 per 4 vehicles
-        self.collision_speculate_skip_rate = collision_speculate_skip_rate  # the larger the faster and more likely to miss a cross collision
 
     def init_traffic_lights_from_map(self):
         schedules = self.map.traffic_lights_schedules
         positions = []
         directions = []
-        if not len(schedules[0][1]["color"]) == len(self.map.roads):
+        if not len(schedules) == len(self.map.roads):
             print("ERROR: traffic lights schedule number not fit to the road number")
             return 0
         for road in self.map.roads:
@@ -282,7 +277,7 @@ class IntersectionSim:
         speed_random_bias = (random.random() % 1 - 0.5) / 0.5 * speed_random_range
         cruising_speed = 10 * self.scale / self.frame_rate * (1 + speed_random_bias)
         # start with low speed if crowded
-        init_speed = 10 * self.scale / self.frame_rate / max((len(self.agents)//4*self.speed_decrease_when_crowded), 1) * (1 + speed_random_bias)
+        init_speed = 10 * self.scale / self.frame_rate / max((len(self.agents)//4*1.5), 1) * (1 + speed_random_bias)
 
         traffic_lights_status = self.traffic_lights.current_status
         current_traffic_dic = self.traffic_lights.traffic_lights_schedules[traffic_lights_status][1]
@@ -292,7 +287,7 @@ class IntersectionSim:
         green_light_roads = []
         green_light_directions = []
         for i, color in enumerate(colors):
-            if color in ["green", "green_left"]:
+            if color == "green":
                 this_road_green_light_directions = []
                 green_light_roads.append(i)
                 directions = rules[i]
@@ -367,8 +362,7 @@ class IntersectionSim:
         vehicle_size = 1.842*self.scale, 4.726*self.scale
         rotated_extended_pt = get_extended_point(rotated_spawn_pt, normalize_angle(direction + math.pi), self.extend * self.scale)
         controller = BasicController.PIDController()
-        policy = BasicPolicy.YieldOrStop(scale=self.scale, frame_rate=self.frame_rate, vehicle_size=vehicle_size,
-                                         skip_rate=self.collision_speculate_skip_rate)
+        policy = BasicPolicy.YieldOrStop(scale=self.scale, frame_rate=self.frame_rate, vehicle_size=vehicle_size)
         spawned_agent = Agent(x=rotated_extended_pt[0],
                               y=rotated_extended_pt[1],
                               yaw=normalize_angle(direction-0.5*math.pi),
@@ -385,7 +379,7 @@ class IntersectionSim:
 
         # check position is occupied
         for agent in self.agents:
-            if check_collision_for_two_agents(spawned_agent, agent, vertical_margin=self.spawn_vertical_margin):
+            if check_collision_for_two_agents(spawned_agent, agent, vertical_margin=5):
                 # print("spawned to an occupied lane")
                 return
 
@@ -652,6 +646,7 @@ class IntersectionSim:
 
 
 class TrafficLights:
+
     def __init__(self, traffic_lights_schedules, positions, directions, scale=1):
         # all schedules, positions are stored in a list for each road on the map
         # number of traffic lights and the roads in the map should be equal and sorted
@@ -668,7 +663,6 @@ class TrafficLights:
         self.current_rules = None
         self.flashing = []
         self.poly_drawn = []
-        self.left_turn = []  # [True, False, True, False] True for current left turning lights
 
     def init_traffic_lights(self, win):
         self.init_drawn = True
@@ -683,7 +677,6 @@ class TrafficLights:
             direction = normalize_angle(self.directions[i] + math.pi / 2)
             an_oval = Oval(Point(pc_x - self.size / 2, pc_y - self.size / 2),
                            Point(pc_x + self.size / 2, pc_y + self.size / 2))
-            # facing to the left as 0
             left_upper = rotate(origin=(pc_x, pc_y),
                                 point=(pc_x, pc_y - self.size / 2),
                                 angle=direction,
@@ -704,39 +697,17 @@ class TrafficLights:
                                 Point(right_upper[0], right_upper[1]),
                                 Point(right_lower[0], right_lower[1]),
                                 Point(left_lower[0], left_lower[1]))
-            left_upper_block = rotate(origin=(pc_x, pc_y),
-                                      point=(pc_x - self.size / 2, pc_y),
-                                      angle=direction,
-                                      tuple=True)
-            right_upper_block = position
-            right_lower_block = left_lower
-            left_lower_block = rotate(origin=(pc_x, pc_y),
-                                      point=(pc_x - self.size / 2, pc_y + self.size / 2),
-                                      angle=direction,
-                                      tuple=True)
-            a_right_block = Polygon(Point(left_upper_block[0], left_upper_block[1]),
-                                    Point(right_upper_block[0], right_upper_block[1]),
-                                    Point(right_lower_block[0], right_lower_block[1]),
-                                    Point(left_lower_block[0], left_lower_block[1]))
-            a_right_block.setFill("black")
             detail_dic = current_schedule[1]
-
             if detail_dic["color"][i] == "red":
                 an_oval.setFill("red")
-            elif detail_dic["color"][i] in ["green", "green_left"]:
+            elif detail_dic["color"][i] == "green":
                 an_oval.setFill("green")
             else:
                 print("ERROR: unknown traffic light color: ", detail_dic["color"][i])
-
             a_polygon.setFill(color_rgb(130, 130, 130))
             an_oval.draw(win)
             a_polygon.draw(win)
-            if detail_dic["color"][i] == "green_left":
-                a_right_block.draw(win)
-                self.left_turn.append(True)
-            else:
-                self.left_turn.append(False)
-            poly_list = [an_oval, a_polygon, a_right_block]
+            poly_list = [an_oval, a_polygon]
             self.lights_shapes.append(poly_list)
             self.poly_drawn.append(True)
 
@@ -751,23 +722,17 @@ class TrafficLights:
             self.time_to_next_state = current_schedule[0] + time.time()
             for i, poly_group in enumerate(self.lights_shapes):
                 an_oval = poly_group[0]
-                for shape in poly_group:
-                    shape.undraw()
+                a_polygon = poly_group[1]
+                an_oval.undraw()
+                a_polygon.undraw()
                 if detail_dic["color"][i] == "red":
                     an_oval.setFill("red")
-                elif detail_dic["color"][i] in ["green", "green_left"]:
+                elif detail_dic["color"][i] == "green":
                     an_oval.setFill("green")
                 else:
                     print("ERROR: unknown traffic light color: ", detail_dic["color"][i])
-
-                if detail_dic["color"][i] == "green_left":
-                    self.left_turn[i] = True
-                    for shape in poly_group:
-                        shape.draw(win)
-                else:
-                    self.left_turn[i] = False
-                    poly_group[0].draw(win)
-                    poly_group[1].draw(win)
+                an_oval.draw(win)
+                a_polygon.draw(win)
                 self.poly_drawn[i] = True
 
     def check_flashing(self, win):
@@ -784,11 +749,6 @@ class TrafficLights:
                             self.lights_shapes[i][0].draw(win)
                             self.lights_shapes[i][1].undraw()
                             self.lights_shapes[i][1].draw(win)
-                            if self.left_turn[i]:
-                                self.lights_shapes[i][2].undraw()
-                                self.lights_shapes[i][2].draw(win)
-                            else:
-                                self.lights_shapes[i][2].undraw()
                             self.poly_drawn[i] = True
 
 
