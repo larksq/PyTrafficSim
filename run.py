@@ -26,7 +26,7 @@ win.autoflush = False
 # test_is = IntersectionSim(win=win, trajectory=True)
 # test_is.loop(agents_per_second=2.0, running_time=50)
 
-# DEMO 2: with a left-turning light at demo intersection
+# DEMO 2: a left-turning light at demo intersection
 test_is = IntersectionSim(win=win,
                           trajectory=False,
                           map_cls=DefaultMap_4ways_WithLeftTurn.Map,

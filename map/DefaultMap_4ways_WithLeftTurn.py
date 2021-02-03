@@ -1,5 +1,9 @@
 from util import *
 
+"""
+Default intersection with left turning lights
+"""
+
 # lane rules counting from the center towards the right (right side driving rules)
 # empty outbounds -> default (Dynamic)
 lanes_rule_3 = [{

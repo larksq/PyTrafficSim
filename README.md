@@ -16,7 +16,7 @@ Change the parameters in the `run.py` file to customize the simulation. Change `
 
 ![Demo_a](images/demo_a.gif)
 ![Demo_b](images/demo_b.gif)
-![Demo_c](images/demo_c.gif)
+![Demo_c](images/demo_leftturn.gif)
 
 ### Demo Map
 The demo map is based on a real intersection (38.64934615481847, -90.30073896398561) in front of my school in Saint Louis although the lane rules and traffic lights were changed to be more challenging. Change the `DefaultMap_4ways.py `file to get a customized map. Remember to change or add a new lanes rule dictionary if you change the number of the lanes to let the simulator know which lane is a right turn lane and which is a left turn lane. 

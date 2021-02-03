@@ -36,7 +36,6 @@ class YieldOrStop:
         """
 
         # TODO: ignore opposite direction forward driving cars to speed up
-
         checking_agent_trajectory = checking_agent.trajectory
         self.etc = None
         self.next_collision_pt = None

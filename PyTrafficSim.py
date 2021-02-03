@@ -6,11 +6,12 @@ import math
 import numpy as np
 from vehicle_model import VehicleModels
 from motion_planning import MotionPlanning
-from map import DefaultMap_4ways
-from map import DefaultMap_4ways_WithLeftTurn
 from policy import BasicPolicy
 from controller import BasicController
 import LaneChooser
+
+from map import DefaultMap_4ways
+from map import DefaultMap_4ways_WithLeftTurn
 
 # max_steer = np.radians(30.0)  # [rad] max steering angle
 # L = 2.9  # [m] Wheel base of vehicle
