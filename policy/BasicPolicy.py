@@ -2,7 +2,7 @@ from util import *
 
 class YieldOrStop:
     def __init__(self, scale=1, frame_rate=30, unscaled_emergency_dist=10, alert_speed=7, yield_a=-10, accelerate_rate=6,
-                 vehicle_size=(1.842, 4.726)):
+                 vehicle_size=(1.842, 4.726), skip_rate=15):
         # all unit not scaled as meters, meters/second ..
         self.scale = scale
         self.emergency_dist = unscaled_emergency_dist * scale
@@ -19,6 +19,7 @@ class YieldOrStop:
         self.next_collision_pt = None  # follow collision do not update collision point
         self.etc = None  # estimated time of collision in frames
         self.max_etc_for_follow_collision = None
+        self.skip_rate = skip_rate
 
 
     def get_next_action(self, checking_agent, all_agents, idle_speed=30):
@@ -33,6 +34,8 @@ class YieldOrStop:
         but under the same motion planning, the predicted trajectory would be the same as the original one.
         So no need to recompute.
         """
+
+        # TODO: ignore opposite direction forward driving cars to speed up
 
         checking_agent_trajectory = checking_agent.trajectory
         self.etc = None
@@ -57,7 +60,8 @@ class YieldOrStop:
                 collision = self.check_path_collision(trajectory_1=checking_agent_trajectory,
                                                       trajectory_2=target_trajectory,
                                                       v1=max(idle_speed * 0.8, checking_agent.vx),
-                                                      v2=target_agent.vx)
+                                                      v2=target_agent.vx,
+                                                      skip_rate=self.skip_rate)
                 if self.etc is not None:
                     if last_etc is None or self.etc < last_etc:
                         is_closet = True
@@ -101,12 +105,13 @@ class YieldOrStop:
         return next_action
 
 
-    def check_path_collision(self, trajectory_1, trajectory_2, v1=1, v2=1):
+    def check_path_collision(self, trajectory_1, trajectory_2, v1=1, v2=1, skip_rate=15):
         """
         :param trajectory_1:
         :param trajectory_2:
         :param v1:
         :param v2:
+        :param skip_rate:
         :return: False, True(collision), "follow"(collision but need to follow)
         """
         v1 += 0.01
@@ -115,7 +120,7 @@ class YieldOrStop:
         len_traj1 = len(trajectory_1[0])
         len_traj2 = len(trajectory_2[0])
         time_total = int(min(len_traj1 / v1, len_traj2 / v2))
-        skip_rate = 15
+        # skip_rate = skip_rate
         unscaled_size = self.vehicle_size[0] / self.scale, self.vehicle_size[1] / self.scale
         follow = False
         for i in range(time_total - 1):
