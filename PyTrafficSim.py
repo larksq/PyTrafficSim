@@ -12,6 +12,10 @@ import LaneChooser
 
 from map import DefaultMap_4ways
 from map import DefaultMap_4ways_WithLeftTurn
+from map import DefaultMap_4ways_StopSigns
+
+from dataloader.DataLoader import *
+
 
 # max_steer = np.radians(30.0)  # [rad] max steering angle
 # L = 2.9  # [m] Wheel base of vehicle
@@ -32,7 +36,7 @@ class Agent:
                  max_steer=np.radians(30.0), L=2.82, centerPer=0.45,
                  Cf=1600.0 * 2.0, Cr=1700.0 * 2.0, Iz=2250.0, m=1500.0,
                  # visualization dimension from Audi A4
-                 length=4.726, width=1.842, Lf=0.45*82, goal_pts=(500, 500), goal_direction=0,
+                 length=4.726, width=1.842, Lf=0.45 * 82, goal_pts=(500, 500), goal_direction=0,
                  policy=None, spawn_position=(0, 0),
                  controller=None, cruise_speed=0.01, start_point=(0, 0)):
 
@@ -47,7 +51,7 @@ class Agent:
         self.c_r1 = 0.01
         self.max_steer = max_steer  # [rad] max steering angle
         self.L = L  # px
-        self.Lr = L - L*centerPer
+        self.Lr = L - L * centerPer
         self.Lf = Lf
         self.Cf = Cf
         self.Cr = Cr
@@ -70,7 +74,7 @@ class Agent:
         self.last_action_time = None
         self.controller = controller
         self.motion_planner = None
-
+        self.points_before_next_stop_line = 0
 
     def gen_trajectory(self, scale, frame_rate):
         if len(self.trajectory) > 0:
@@ -82,13 +86,15 @@ class Agent:
         else:
             # init motion planner
             x, y = self.starting_pt
-            current_p = (x/scale, y/scale)  # px->m
-            current_v = self.vx/scale*frame_rate  # px/f->m/s
-            current_a = self.a/scale*(frame_rate**2)
-            current_theta = normalize_angle(self.yaw+0.5*math.pi) # direction_angle
+            current_p = (x / scale, y / scale)  # px->m
+            current_v = self.vx / scale * frame_rate  # px/f->m/s
+            current_a = self.a / scale * (frame_rate ** 2)
+            current_theta = normalize_angle(self.yaw + 0.5 * math.pi)  # direction_angle
             c_state = [current_p, current_v, current_a, current_theta]
-            t_state = [(self.__goal[0][0]/scale, self.__goal[0][1]/scale), current_v, current_a, self.__goal[1]]
-            self.motion_planner = MotionPlanning.PolynomialTrajectaryGenerator(current_state=c_state, target_state=t_state, speed_limit=23) #23m/s=50mph
+            t_state = [(self.__goal[0][0] / scale, self.__goal[0][1] / scale), current_v, current_a, self.__goal[1]]
+            self.motion_planner = MotionPlanning.PolynomialTrajectaryGenerator(current_state=c_state,
+                                                                               target_state=t_state,
+                                                                               speed_limit=23)  # 23m/s=50mph
             self.motion_planner.fit_poly()
             self.trajectory = self.motion_planner.get_states(frame_rate)
 
@@ -99,14 +105,17 @@ class Agent:
         if idx > 0:
             for i in range(3):
                 self.trajectory[i] = self.trajectory[i][int(velocity / self.motion_planner.sample_rate):]
+        if self.points_before_next_stop_line > 0:
+            self.points_before_next_stop_line -= idx
 
     def gen_trajectory_agent2pt(self, scale, frame_rate, t_state):
-        current_p = (self.x/scale, self.y/scale)  # px->m
-        current_v = self.vx/scale*frame_rate  # px/f->m/s
-        current_a = self.a/scale*(frame_rate**2)
-        current_theta = normalize_angle(self.yaw+0.5*math.pi) # direction_angle
+        current_p = (self.x / scale, self.y / scale)  # px->m
+        current_v = self.vx / scale * frame_rate  # px/f->m/s
+        current_a = self.a / scale * (frame_rate ** 2)
+        current_theta = normalize_angle(self.yaw + 0.5 * math.pi)  # direction_angle
         c_state = [current_p, current_v, current_a, current_theta]
-        motion_planner = MotionPlanning.PolynomialTrajectaryGenerator(current_state=c_state, target_state=t_state, speed_limit=23) #23m/s=50mph
+        motion_planner = MotionPlanning.PolynomialTrajectaryGenerator(current_state=c_state, target_state=t_state,
+                                                                      speed_limit=23)  # 23m/s=50mph
         motion_planner.fit_poly()
         return motion_planner.get_states(frame_rate)
 
@@ -117,6 +126,7 @@ class Agent:
         extend_list_v = []
         extend_list_a = []
         total_points = int(extend_in_meters * self.motion_planner.sample_rate * frame_rate)
+        self.points_before_next_stop_line = total_points
         delta_x = (self.starting_pt[0] - self.x) / total_points
         delta_y = (self.starting_pt[1] - self.y) / total_points
         vx = self.vx * math.cos(self.yaw) / scale * frame_rate
@@ -124,7 +134,7 @@ class Agent:
         for i in range(total_points):
             x = self.x + i * delta_x
             y = self.y + i * delta_y
-            extend_list_p.append((x/scale, y/scale))
+            extend_list_p.append((x / scale, y / scale))
             extend_list_v.append((vx, vy))
             extend_list_a.append((0, 0))
 
@@ -139,9 +149,9 @@ class Agent:
         self.path_polys = []
         if not clear_traj:
             for i in range(0, len(self.trajectory[0])):
-                if i%skip_freq == 0:
+                if i % skip_freq == 0:
                     x, y = self.trajectory[0][i]
-                    aPoint = Point(x*scale, y*scale)
+                    aPoint = Point(x * scale, y * scale)
                     aPoint.setFill("green")
                     aPoint.draw(win)
                     self.path_polys.append(aPoint)
@@ -149,8 +159,8 @@ class Agent:
 
 class IntersectionSim:
     def __init__(self, win, map_cls=DefaultMap_4ways.Map, scale=15,
-                 frame_rate=30.0, window_h=1000, window_w=1000, extend=15, trajectory=True, spawn_vertical_margin=5,
-                 collision_speculate_skip_rate=15, speed_decrease_when_crowded=1.5):
+                 frame_rate=30.0, window_h=1000, window_w=1000, extend=17, trajectory=True, spawn_vertical_margin=5,
+                 collision_speculate_skip_rate=15, speed_decrease_when_crowded=1.5, initial_speed_rate=1, cruising_speed_rate=1):
         self.map = map_cls()
         self.scale = scale
         self.win = win
@@ -170,6 +180,8 @@ class IntersectionSim:
         self.spawn_vertical_margin = spawn_vertical_margin
         self.speed_decrease_when_crowded = speed_decrease_when_crowded  # divide 1.5 per 4 vehicles
         self.collision_speculate_skip_rate = collision_speculate_skip_rate  # the larger the faster and more likely to miss a cross collision
+        self.initial_speed_rate = initial_speed_rate
+        self.cruising_speed_rate = cruising_speed_rate
 
     def init_traffic_lights_from_map(self):
         schedules = self.map.traffic_lights_schedules
@@ -205,36 +217,42 @@ class IntersectionSim:
         line_list_in = []
 
         for road_dic in self.map.roads:
-            pc = (road_dic["pc"][0]*self.scale, road_dic["pc"][1]*self.scale)
+            pc = (road_dic["pc"][0] * self.scale, road_dic["pc"][1] * self.scale)
             direction = road_dic["direction"]
             length = road_dic["length"]
             out_no = road_dic["out_number"]
             in_no = road_dic["in_number"]
 
-            rect_rotated_1 = tuple_recenter(rotate(pc, (-in_no*length*self.scale+pc[0], pc[1]), direction, tuple=True), w, h)
-            rect_rotated_2 = tuple_recenter(rotate(pc, (out_no*length*self.scale+pc[0], pc[1]), direction, tuple=True), w, h)
-            rect_rotated_3 = tuple_recenter(rotate(pc, (out_no*length*self.scale+pc[0], pc[1]+line_extended*self.scale), direction, tuple=True), w, h)
-            rect_rotated_4 = tuple_recenter(rotate(pc, (-in_no*length*self.scale+pc[0], pc[1]+line_extended*self.scale), direction, tuple=True), w, h)
+            rect_rotated_1 = tuple_recenter(
+                    rotate(pc, (-in_no * length * self.scale + pc[0], pc[1]), direction, tuple=True), w, h)
+            rect_rotated_2 = tuple_recenter(
+                    rotate(pc, (out_no * length * self.scale + pc[0], pc[1]), direction, tuple=True), w, h)
+            rect_rotated_3 = tuple_recenter(
+                    rotate(pc, (out_no * length * self.scale + pc[0], pc[1] + line_extended * self.scale), direction,
+                           tuple=True), w, h)
+            rect_rotated_4 = tuple_recenter(
+                    rotate(pc, (-in_no * length * self.scale + pc[0], pc[1] + line_extended * self.scale), direction,
+                           tuple=True), w, h)
 
             a_polygon = Polygon(Point(rect_rotated_1[0], rect_rotated_1[1]),
-                               Point(rect_rotated_2[0], rect_rotated_2[1]),
-                               Point(rect_rotated_3[0], rect_rotated_3[1]),
-                               Point(rect_rotated_4[0], rect_rotated_4[1]))
+                                Point(rect_rotated_2[0], rect_rotated_2[1]),
+                                Point(rect_rotated_3[0], rect_rotated_3[1]),
+                                Point(rect_rotated_4[0], rect_rotated_4[1]))
 
             a_polygon.setFill("black")
             a_polygon.draw(self.win)
 
             for i in range(0, out_no):
                 rotated_fsp_1 = tuple_recenter(
-                    rotate(pc, (i*length*self.scale+pc[0], pc[1]), direction, tuple=True), w, h)
+                        rotate(pc, (i * length * self.scale + pc[0], pc[1]), direction, tuple=True), w, h)
                 rotated_fsp_2 = tuple_recenter(
-                    rotate(pc, ((i+1)*length*self.scale+pc[0], pc[1]), direction, tuple=True), w, h)
+                        rotate(pc, ((i + 1) * length * self.scale + pc[0], pc[1]), direction, tuple=True), w, h)
                 rotated_fsp_3 = tuple_recenter(
-                    rotate(
-                        origin=pc,
-                        point=(i*length*self.scale+pc[0], pc[1]+line_extended*self.scale),
-                        angle=direction,
-                        tuple=True), w, h)
+                        rotate(
+                                origin=pc,
+                                point=(i * length * self.scale + pc[0], pc[1] + line_extended * self.scale),
+                                angle=direction,
+                                tuple=True), w, h)
                 line_list_out.append(Line(Point(rotated_fsp_1[0], rotated_fsp_1[1]),
                                           Point(rotated_fsp_2[0], rotated_fsp_2[1])))
                 line_list_out.append(Line(Point(rotated_fsp_1[0], rotated_fsp_1[1]),
@@ -242,12 +260,13 @@ class IntersectionSim:
 
             for i in range(1, in_no):
                 rotated_fsp_1 = tuple_recenter(
-                    rotate(pc, (-i*length*self.scale+pc[0], pc[1]), direction, tuple=True), w, h)
+                        rotate(pc, (-i * length * self.scale + pc[0], pc[1]), direction, tuple=True), w, h)
                 rotated_fsp_3 = tuple_recenter(
-                    rotate(pc, (-i*length*self.scale+pc[0], pc[1]+line_extended*self.scale), direction, tuple=True), w, h)
+                        rotate(pc, (-i * length * self.scale + pc[0], pc[1] + line_extended * self.scale), direction,
+                               tuple=True), w, h)
                 line_list_in.append(
-                    Line(Point(rotated_fsp_1[0], rotated_fsp_1[1]),
-                         Point(rotated_fsp_3[0], rotated_fsp_3[1])))
+                        Line(Point(rotated_fsp_1[0], rotated_fsp_1[1]),
+                             Point(rotated_fsp_3[0], rotated_fsp_3[1])))
 
             center_poly_points.append(rect_rotated_2)
             center_poly_points.append(rect_rotated_1)
@@ -260,7 +279,7 @@ class IntersectionSim:
                             Point(center_poly_points[4][0], center_poly_points[4][1]),
                             Point(center_poly_points[5][0], center_poly_points[5][1]),
                             Point(center_poly_points[6][0], center_poly_points[6][1]),
-                            Point(center_poly_points[7][0], center_poly_points[7][1]),)
+                            Point(center_poly_points[7][0], center_poly_points[7][1]), )
 
         c_polygon.setFill("black")
         c_polygon.draw(self.win)
@@ -274,16 +293,13 @@ class IntersectionSim:
             line.draw(self.win)
 
     def random_spawn_agent(self):
-        # check traffic lights
-        for i, flashing in enumerate(self.traffic_lights.flashing):
-            if flashing:
-                return None
-
         speed_random_range = 0.1
         speed_random_bias = (random.random() % 1 - 0.5) / 0.5 * speed_random_range
         cruising_speed = 10 * self.scale / self.frame_rate * (1 + speed_random_bias)
         # start with low speed if crowded
-        init_speed = 10 * self.scale / self.frame_rate / max((len(self.agents)//4*self.speed_decrease_when_crowded), 1) * (1 + speed_random_bias)
+        init_speed = 10 * self.initial_speed_rate * self.scale / self.frame_rate / max(
+                (len(self.agents) // 4 * self.speed_decrease_when_crowded),
+                1) * (1 + speed_random_bias)
 
         traffic_lights_status = self.traffic_lights.current_status
         current_traffic_dic = self.traffic_lights.traffic_lights_schedules[traffic_lights_status][1]
@@ -293,7 +309,10 @@ class IntersectionSim:
         green_light_roads = []
         green_light_directions = []
         for i, color in enumerate(colors):
-            if color in ["green", "green_left"]:
+            if len(self.traffic_lights.flashing) == len(colors) and self.traffic_lights.flashing[
+                i] and color is not "yellow":
+                return None
+            if color in ["green", "green_left", "yellow"]:
                 this_road_green_light_directions = []
                 green_light_roads.append(i)
                 directions = rules[i]
@@ -365,20 +384,21 @@ class IntersectionSim:
                                                          scale=self.scale,
                                                          window_size=(self.window_w, self.window_h),
                                                          outbound=False)
-        vehicle_size = 1.842*self.scale, 4.726*self.scale
-        rotated_extended_pt = get_extended_point(rotated_spawn_pt, normalize_angle(direction + math.pi), self.extend * self.scale)
+        vehicle_size = 1.842 * self.scale, 4.726 * self.scale
+        rotated_extended_pt = get_extended_point(rotated_spawn_pt, normalize_angle(direction + math.pi),
+                                                 self.extend * self.scale)
         controller = BasicController.PIDController()
         policy = BasicPolicy.YieldOrStop(scale=self.scale, frame_rate=self.frame_rate, vehicle_size=vehicle_size,
-                                         skip_rate=self.collision_speculate_skip_rate)
+                                         skip_rate=self.collision_speculate_skip_rate, alert_speed=cruising_speed*0.7)
         spawned_agent = Agent(x=rotated_extended_pt[0],
                               y=rotated_extended_pt[1],
-                              yaw=normalize_angle(direction-0.5*math.pi),
+                              yaw=normalize_angle(direction - 0.5 * math.pi),
                               vx=init_speed,
-                              Lf=2.82*0.45*self.scale,
+                              Lf=2.82 * 0.45 * self.scale,
                               width=vehicle_size[0],
                               length=vehicle_size[1],
                               goal_pts=g_rotated_spawn_pt,
-                              goal_direction=normalize_angle(goal_road_dic["direction"]+math.pi),
+                              goal_direction=normalize_angle(goal_road_dic["direction"] + math.pi),
                               spawn_position=(intersection, spawn_lane_number),  # px and px/f
                               cruise_speed=cruising_speed, controller=controller,
                               policy=policy, start_point=rotated_spawn_pt)
@@ -391,8 +411,8 @@ class IntersectionSim:
                 return
 
         # draw
-        agent_w = spawned_agent.width*self.scale
-        agent_l = spawned_agent.length*self.scale
+        agent_w = spawned_agent.width * self.scale
+        agent_l = spawned_agent.length * self.scale
         pt1, pt2, pt3, pt4 = generate_contour_pts(rotated_spawn_pt, agent_w, agent_l, direction)
         spawned_agent.agent_polys = Polygon(Point(pt1[0], pt1[1]),
                                             Point(pt2[0], pt2[1]),
@@ -452,7 +472,7 @@ class IntersectionSim:
                             distance = euclidean_distance(pt1=(checking_agent.x, checking_agent.y),
                                                           pt2=(collision_pt_x, collision_pt_y))
                             # if distance < checking_agent.policy.min_distance_to_slow * self.scale:
-                            if checking_agent.policy.etc < 2.5 * self.frame_rate:
+                            if checking_agent.policy.etc < checking_agent.policy.time_to_squeeze * self.frame_rate:
                                 # Squeeze: I am blocking the road, accelerate to alert speed and leave
                                 if checking_agent.vx < checking_agent.policy.alert_speed:
                                     checking_agent.a = checking_agent.policy.accelerate_rate * mss_to_pff * 0.8
@@ -466,7 +486,7 @@ class IntersectionSim:
                                     checking_agent.a = checking_agent.policy.accelerate_rate * mss_to_pff
                         else:
                             print("Warning: yield before detecting collision point")
-                        # checking_agent.vx += checking_agent.policy.yield_a * mss_to_pff
+                            # checking_agent.vx += checking_agent.policy.yield_a * mss_to_pff
                     elif checking_agent.next_action == "yield_squeeze":
                         if checking_agent.vx > 0:
                             checking_agent.agent_polys.setFill("pink")
@@ -505,7 +525,7 @@ class IntersectionSim:
                             checking_agent.a = checking_agent.policy.accelerate_rate * mss_to_pff
 
                     checking_agent.vx += checking_agent.a
-    
+
     def check_collision(self):
         unchecked_agents = self.agents.copy()
         total_agents = len(unchecked_agents)
@@ -513,7 +533,7 @@ class IntersectionSim:
             return
         # print("checking collision for ", total_agents, " agnets")
         checking_agent = unchecked_agents[0]
-        for i in range(total_agents-1):
+        for i in range(total_agents - 1):
             current_id = unchecked_agents.index(checking_agent)
             distances = []
             unchecked_agents.pop(current_id)
@@ -537,7 +557,6 @@ class IntersectionSim:
                 self.agents[id2].crashed = True
             checking_agent = target_agent
 
-
     def update(self):
         self.traffic_lights.update_traffic_lights(self.win)
         self.traffic_lights.check_flashing(self.win)
@@ -551,7 +570,8 @@ class IntersectionSim:
                     else:
                         agent.draw_traj(scale=self.scale, win=self.win, clear_traj=True)
                 # self.model.update(agent=agent, throttle=-0.1, delta=0.1)
-                throttle, delta = agent.controller.get_control_signal(agent=agent, scale=self.scale, frame_rate=self.frame_rate)
+                throttle, delta = agent.controller.get_control_signal(agent=agent, scale=self.scale,
+                                                                      frame_rate=self.frame_rate)
                 throttle = throttle * self.scale / self.frame_rate / self.frame_rate
                 delta = delta / self.frame_rate / self.frame_rate
                 # NOTE: Current logic does not work
@@ -590,7 +610,7 @@ class IntersectionSim:
         last_spawn = time.time()
         init_time = last_time
         counter = 0
-        spawn_freq = agents_per_second # n agents per second
+        spawn_freq = agents_per_second  # n agents per second
         # for i in range(0, 300):
         self.traffic_lights.init_traffic_lights(win=self.win)
 
@@ -599,10 +619,10 @@ class IntersectionSim:
                 print("Quit simulation: too many agents")
                 return
             current_time = time.time()
-            if current_time-last_spawn > 1.0 / spawn_freq:
+            if current_time - last_spawn > 1.0 / spawn_freq:
                 self.random_spawn_agent()
                 last_spawn = current_time
-            if current_time-last_time > 1.0 / self.frame_rate:
+            if current_time - last_time > 1.0 / self.frame_rate:
                 self.speculate()
                 self.update()
                 update(30)
@@ -611,13 +631,13 @@ class IntersectionSim:
                 self.check_collision()
                 self.clear_finished_agents()
             else:
-                time.sleep(1.0/self.frame_rate/40.0)
-        print("LOOP END. \nSupposed Running time: "+str(running_time)+
-              "\nActual Running time: "+str(time.time()-init_time)+"s"+
-              "\nFPS: "+str(int(counter/(time.time()-init_time)))+"/"+str(int(self.frame_rate)))
+                time.sleep(1.0 / self.frame_rate / 40.0)
+        print("LOOP END. \nSupposed Running time: " + str(running_time) +
+              "\nActual Running time: " + str(time.time() - init_time) + "s" +
+              "\nFPS: " + str(int(counter / (time.time() - init_time))) + "/" + str(int(self.frame_rate)))
         system_log = "Simulation Finished\n\nCrashed: {}\nTotal traffic: {}\nSimulation time: {}".format(
                 self.crash_time, self.finished_agent, str(running_time))
-        message = Text(Point(self.window_w/2,self.window_h/2), system_log + "\n\nClick anywhere to close")
+        message = Text(Point(self.window_w / 2, self.window_h / 2), system_log + "\n\nClick anywhere to close")
         message.setTextColor("pink")
         message.setSize(22)
         message.draw(graphwin=self.win)
@@ -627,16 +647,17 @@ class IntersectionSim:
         x, y = agent.trajectory[0][1]
         v_x, v_y = agent.trajectory[1][1]
         # a_x, a_y = agent.trajectory[0][2]
-        agent.x = x*scale
-        agent.y = y*scale
+        agent.x = x * scale
+        agent.y = y * scale
         # agent.vx = math.sqrt((v_x*scale/frame_rate)**2+(v_y*scale/frame_rate)**2)
-        agent.yaw = normalize_angle(math.atan2(v_y*frame_rate, v_x*frame_rate))
+        agent.yaw = normalize_angle(math.atan2(v_y * frame_rate, v_x * frame_rate))
 
     def draw_agent_on_window(self, agent, clear_agent=False):
         poly = agent.agent_polys
         poly.undraw()
         if not clear_agent:
-            pt1, pt2, pt3, pt4 = generate_contour_pts((agent.x, agent.y), agent.width, agent.length, normalize_angle(agent.yaw+0.5*math.pi))
+            pt1, pt2, pt3, pt4 = generate_contour_pts((agent.x, agent.y), agent.width, agent.length,
+                                                      normalize_angle(agent.yaw + 0.5 * math.pi))
             poly.points = [Point(pt1[0], pt1[1]), Point(pt2[0], pt2[1]), Point(pt3[0], pt3[1]), Point(pt4[0], pt4[1])]
             poly.draw(self.win)
 
@@ -647,7 +668,7 @@ class IntersectionSim:
             # multiple ids can exits, and they are ascending
             counter = 0
             for i in self.finished_agent_id:
-                self.agents.pop(i-counter)
+                self.agents.pop(i - counter)
                 counter += 1
             self.finished_agent_id = []
 
@@ -726,6 +747,8 @@ class TrafficLights:
                 an_oval.setFill("red")
             elif detail_dic["color"][i] in ["green", "green_left"]:
                 an_oval.setFill("green")
+            elif detail_dic["color"][i] == "yellow":
+                an_oval.setFill("yellow")
             else:
                 print("ERROR: unknown traffic light color: ", detail_dic["color"][i])
 
@@ -758,6 +781,8 @@ class TrafficLights:
                     an_oval.setFill("red")
                 elif detail_dic["color"][i] in ["green", "green_left"]:
                     an_oval.setFill("green")
+                elif detail_dic["color"][i] == "yellow":
+                    an_oval.setFill("yellow")
                 else:
                     print("ERROR: unknown traffic light color: ", detail_dic["color"][i])
 
@@ -793,20 +818,132 @@ class TrafficLights:
                             self.poly_drawn[i] = True
 
 
+class SimWithLoadedData(IntersectionSim):
+    nuScenes_frame_rate = 2
+
+    def __init__(self, win, scale=15,
+                 window_h=1000, window_w=1000, trajectory=True,
+                 collision_speculate_skip_rate=15):
+        self.scale = scale
+        self.win = win
+        self.window_w = window_w
+        self.window_h = window_h
+        self.agents = []
+        self.frame_rate = self.nuScenes_frame_rate
+        self.model = VehicleModels.DefaultKinematicModel(dt=1.0)
+        self.simulate_dynamics = False
+        self.trajectory = trajectory
+        self.collision_detect = True
+        # self.traffic_lights = self.init_traffic_lights_from_map()
+        self.collision_speculate_skip_rate = collision_speculate_skip_rate  # the larger the faster and more likely to miss a cross collision
+
+        self.map_polys = []
+        self.drawn_lane_tokens = []
+        self.nusc_map = NuScenesMap(dataroot='data/sets/nuscenes', map_name='singapore-onenorth')
+        self.loader = NuScenesLoader(scale=scale,
+                                     frame_rate=self.nuScenes_frame_rate, window_h=1000, window_w=1000)
+
+    def loop_with_loaded_data(self, frame_rate=2):
+        # load agents from DataLoader
+        frame_list = self.loader.load_a_scene(scene_num=0)
+
+        last_time = time.time()
+
+        bgMap = Image(Point(self.window_w / 2,self.window_h / 2), "images/NuScene_map01_rescaled.png")
+        bgMap.draw(self.win)
+
+        self.draw_predicted_agent_traj((393.357, 1149.173, 0.419), (385.638, 1131.14, 0.419), 13, 15, 0.1)
+        self.draw_predicted_agent_traj((385.638, 1131.14, 0.419), (346.001, 1120.849, 1.868), 15, 15, 0.1 / 1.2)
+
+        while len(frame_list) > 0:
+            current_time = time.time()
+            if current_time - last_time > 1.0 / self.nuScenes_frame_rate:
+                # draw an agent on current frame
+                # pop the first frame
+                self.draw_agent_on_window_by_frame(frame_list)
+                frame_list.pop(0)
+                update(self.nuScenes_frame_rate)
+                last_time = current_time
+                # self.check_collision()
+            else:
+                time.sleep(1.0 / self.nuScenes_frame_rate / 40.0)
+
+        print("finished")
+
+    def draw_predicted_agent_traj(self, starting_pt, ending_pt, staring_v, ending_v, rate):
+        x, y, yaw = starting_pt
+        current_p = self.recenter((x, y), self.loader.offsets)
+        current_v = staring_v
+        current_a = 0
+        current_theta = yaw#normalize_angle(yaw - 0.5 * math.pi)  # direction_angle
+        ending_x, ending_y = self.recenter((ending_pt[0], ending_pt[1]), self.loader.offsets)
+        c_state = [current_p, current_v, current_a, current_theta]
+        t_state = [(ending_x, ending_y), ending_v, current_a, ending_pt[2]] # normalize_angle(ending_pt[2] - 0.5 * math.pi)]
+        motion_planner = MotionPlanning.PolynomialTrajectaryGenerator(current_state=c_state,
+                                                                      target_state=t_state,
+                                                                      speed_limit=23)  # 23m/s=50mph
+        motion_planner.fit_poly()
+        trajectory = motion_planner.get_states(rate)
+        for pt in trajectory[0]:
+            x, y = pt
+            aCircle = Circle(Point(x ,y), 1)
+            aCircle.setFill("yellow")
+            aCircle.draw(self.win)
 
 
+    def init_map_drawing(self, frame_list):
+        # only draw the map based on the 0 frame
+        for agent_parameters in frame_list[0]:
+            x, y, yaw, width, length, v, a = agent_parameters
+            self.draw_temp_poses_and_lane(x=x, y=y, yaw=yaw)
 
+    def draw_temp_poses_and_lane(self, x, y, yaw):
+        closest_lane = self.nusc_map.get_closest_lane(x, y, radius=2)
+        if closest_lane not in self.drawn_lane_tokens:
+            lane_record = self.nusc_map.get_arcline_path(closest_lane)
+            poses = arcline_path_utils.discretize_lane(lane_record, resolution_meters=1)
+            for pose in poses:
+                recentered_pose = self.recenter((pose[0], pose[1]), self.loader.offsets)
+                pt1, pt2, pt3, pt4 = generate_contour_pts((recentered_pose[0], recentered_pose[1]),
+                                                          10 * self.scale, 3.5 * self.scale, -pose[2])  # length, width
+                aPoly = Polygon(Point(pt1[0], pt1[1]),
+                                Point(pt2[0], pt2[1]),
+                                Point(pt3[0], pt3[1]),
+                                Point(pt4[0], pt4[1]))
+                aPoly.setFill("black")
+                aPoly.draw(self.win)
+                self.map_polys.append(aPoly)
+            self.drawn_lane_tokens.append(closest_lane)
 
+    def draw_agent_on_window_by_frame(self, frame_list):
+        for agent in self.agents:
+            poly = agent.agent_polys
+            poly.undraw()
+        self.agents = []
+        # self.init_map_drawing(frame_list)
+        for agent_parameters in frame_list[0]:
+            # for each agent
+            x, y, yaw, width, length, v, a = agent_parameters
+            offsets = self.loader.offsets
+            recentered_xy = self.recenter((x, y), offsets)
+            new_agent = Agent(x=recentered_xy[0],
+                              y=recentered_xy[1], yaw=-yaw,
+                              vx=v, length=length * self.scale, width=width * self.scale)
+            self.agents.append(new_agent)
+            # draw
+            agent_w = new_agent.width
+            agent_l = new_agent.length
+            pt1, pt2, pt3, pt4 = generate_contour_pts((new_agent.x, new_agent.y), agent_w, agent_l, new_agent.yaw)
+            new_agent.agent_polys = Polygon(Point(pt1[0], pt1[1]),
+                                            Point(pt2[0], pt2[1]),
+                                            Point(pt3[0], pt3[1]),
+                                            Point(pt4[0], pt4[1]))
+            new_agent.agent_polys.setFill("green")
+            new_agent.agent_polys.draw(self.win)
 
-
-
-
-
-
-
-
-
-
+    def recenter(self, pt, offsets):
+        x, y = pt
+        return - (x + offsets[0]) * self.scale + self.window_w / 2, (y + offsets[1]) * self.scale + self.window_h / 2
 
 
 class DynamicTest:
@@ -824,13 +961,13 @@ class DynamicTest:
         self.offset_y = 0
         self.rotation = 0
 
-        for i in range(0, lines_num*3):
-            line_x = 1 + i*float(window_w)/lines_num
-            line_y = 1 + i*float(window_h)/lines_num
-            aline = Line(Point(-window_w+line_x, -window_h), Point(-window_w+line_x, window_h*2))
+        for i in range(0, lines_num * 3):
+            line_x = 1 + i * float(window_w) / lines_num
+            line_y = 1 + i * float(window_h) / lines_num
+            aline = Line(Point(-window_w + line_x, -window_h), Point(-window_w + line_x, window_h * 2))
             # aline.p1 = Point(line_x, 100)
             aline.draw(win)
-            bline = Line(Point(-window_w, -window_h+line_y), Point(window_w*2, -window_h+line_y))
+            bline = Line(Point(-window_w, -window_h + line_y), Point(window_w * 2, -window_h + line_y))
             # bline = Line(Point(0, line_y), Point(window_w, line_y))
             bline.draw(win)
             self.lineList_v.append(aline)
@@ -850,9 +987,9 @@ class DynamicTest:
         # lines_num = 10 # draw grids, 1line/100px, 1m/10px
 
         for i, line_v in enumerate(self.lineList_v):
-            line_x = offset_x + i*float(self.window_w)/self.lines_num
+            line_x = offset_x + i * float(self.window_w) / self.lines_num
             pt_1 = (-self.window_w + line_x, -self.window_h)
-            pt_2 = (-self.window_w + line_x, self.window_h*2)
+            pt_2 = (-self.window_w + line_x, self.window_h * 2)
             pt_1_r = rotate((0, 0), pt_1, yaw)
             pt_2_r = rotate((0, 0), pt_2, yaw)
 
@@ -862,11 +999,10 @@ class DynamicTest:
             line_v.draw(self.win)
             # line.move(offset_x, 1)
 
-
         for i, line_h in enumerate(self.lineList_h):
-            line_y = offset_y + i*float(self.window_h)/self.lines_num
-            pt_1 = (-self.window_w, -self.window_h+line_y)
-            pt_2 = (self.window_w*2, -self.window_h+line_y)
+            line_y = offset_y + i * float(self.window_h) / self.lines_num
+            pt_1 = (-self.window_w, -self.window_h + line_y)
+            pt_2 = (self.window_w * 2, -self.window_h + line_y)
             pt_1_r = rotate((0, 0), pt_1, yaw)
             pt_2_r = rotate((0, 0), pt_2, yaw)
 
@@ -875,18 +1011,17 @@ class DynamicTest:
             line_h.p2 = Point(pt_2_r[0], pt_2_r[1])
             line_h.draw(self.win)
 
-        # update only once in the end
+            # update only once in the end
 
-
-
-    def runLoop(self, fram_rate = 30):
+    def runLoop(self, fram_rate=30):
         print("run loop")
 
         self.update()
 
         w = self.agentEgo.width
         l = self.agentEgo.length
-        carRec = Rectangle(Point(self.window_w/2-l*10/2,self.window_h/2-w*10/2), Point(self.window_w/2+l*10/2,self.window_h/2+w*10/2))
+        carRec = Rectangle(Point(self.window_w / 2 - l * 10 / 2, self.window_h / 2 - w * 10 / 2),
+                           Point(self.window_w / 2 + l * 10 / 2, self.window_h / 2 + w * 10 / 2))
         carRec.setFill("red")
         carRec.draw(self.win)
 
@@ -897,13 +1032,3 @@ class DynamicTest:
             update(30)
 
         print("loop end")
-
-
-
-
-
-
-
-
-
-

@@ -7,16 +7,26 @@ To run PTS, all you need is a Python3 environment with NumPy, and that's all. No
 For now, the most challenging part of PTS is the decision-making system. The default algorithm `basic_policy.py` currently uses many if statements. I challenge other researchers to get better results on traffic per minute without serious crashes. To see more details about the decision-making system, check the demo decision making chapter below.
 
 ## Demo
-To run the demo, just run
-
+To run the default demo, just run
+```python run.py
 ```
-python run.py
-```
-Change the parameters in the `run.py` file to customize the simulation. Change `agent_per_second` to get fewer or more vehicles in the simulation. Change `running_time` to run a longer or shorter simulation. Change `trajectory` to True to see all trajectories for each agent.
 
+Run different demo by changing the parameter of d/Demo
+```python run.py -d 2
+python run.py -Demo 3
+```
+
+### Demo 1: Default traffic light settings
 ![Demo_a](images/demo_a.gif)
 ![Demo_b](images/demo_b.gif)
-![Demo_c](images/demo_leftturn.gif)
+### Demo 2: Traffic lights with specific left turn green lights
+![Demo_2](images/demo_leftturn.gif)
+### Demo 3: Four ways stop signs / yellow flashing lights
+![Demo_3](images/demo_stopsign.gif)
+
+Change the parameters in the `run.py` file to customize the simulation. Change `agent_per_second` to get fewer or more vehicles in the simulation. Change `running_time` to run a longer or shorter simulation. Change `trajectory` to True to see all trajectories for each agent.
+
+
 
 ### Demo Map
 The demo map is based on a real intersection (38.64934615481847, -90.30073896398561) in front of my school in Saint Louis although the lane rules and traffic lights were changed to be more challenging. Change the `DefaultMap_4ways.py `file to get a customized map. Remember to change or add a new lanes rule dictionary if you change the number of the lanes to let the simulator know which lane is a right turn lane and which is a left turn lane. 
@@ -44,6 +54,14 @@ PTS supported 6 default actions for each agent to take. They are "yield", "stop"
 ### Coordinates
 See the following figure for the coordinate settings for yaw and directions in the project.
 ![Coordinates](images/coordinates.png)
+
+### Load data from other datasets
+In v0.3, I tried to load vehicle traveling data from other professional datasets to verify the PyTrafficSim's ability to predict trajectory. I chose the prediction problem data from [NuScene](https://www.nuscenes.org/) and loaded the number zero scene in the PyTrafficSim. The result is shown in the below gif. Try to uncomment the last part code in the `run.py` script to run it by yourself. 
+![NuScene_Prediction](images/NuScene_demo.gif) 
+
+Before you run this part of the code, you need to install the PythonSDK from the website of NuScenes. You also need to download the mini-val data and all the maps to the data folder. Rectify the directory of data and maps in the script of `DataLoader.py`.
+
+Note that the default polynomial-based trajectory generation is quite capable of predicting the future trajectory with limited errors. This fact pushed me to rethink the problem of trajectory prediction.
 
 ### Join the project
 PTS is meant to be an open project and it is in the earliest stage. Contact me if you are interested.
