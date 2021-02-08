@@ -18,6 +18,7 @@ python run.py -d 2
 python run.py -Demo 3
 ```
 
+
 ### Demo 1: Default traffic light settings
 ![Demo_a](images/demo_a.gif)
 ![Demo_b](images/demo_b.gif)
@@ -59,6 +60,7 @@ See the following figure for the coordinate settings for yaw and directions in t
 
 ### Load data from other datasets
 In v0.3, I tried to load vehicle traveling data from other professional datasets to verify the PyTrafficSim's ability to predict trajectory. I chose the prediction problem data from [NuScene](https://www.nuscenes.org/) and loaded the number zero scene in the PyTrafficSim. The result is shown in the below gif. Try to uncomment the last part code in the `run.py` script to run it by yourself. 
+
 ![NuScene_Prediction](images/NuScene_demo.gif) 
 
 Before you run this part of the code, you need to install the PythonSDK from the website of NuScenes. You also need to download the mini-val data and all the maps to the data folder. Rectify the directory of data and maps in the script of `DataLoader.py`.
