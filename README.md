@@ -8,11 +8,13 @@ For now, the most challenging part of PTS is the decision-making system. The def
 
 ## Demo
 To run the default demo, just run
-```python run.py
+```
+python run.py
 ```
 
 Run different demo by changing the parameter of d/Demo
-```python run.py -d 2
+```
+python run.py -d 2
 python run.py -Demo 3
 ```
 
