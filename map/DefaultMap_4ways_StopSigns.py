@@ -62,7 +62,7 @@ class Map:
         }]
         self.traffic_lights_schedules = [
             [
-                99999999, {"color": ["yellow", "yellow", "yellow", "yellow"], "flashing": [True, True, True, True],
+                99999999, {"color": ["yellow", "yellow", "yellow", "yellow"], "flashing": [False, False, False, False],# [True, True, True, True],
                      "rule": [self.tl_yellow, self.tl_yellow, self.tl_yellow, self.tl_yellow]},
             ]]
 

@@ -14,6 +14,8 @@ from map import DefaultMap_4ways
 from map import DefaultMap_4ways_WithLeftTurn
 from map import DefaultMap_4ways_StopSigns
 
+from dataloader.DataLoader import *
+
 # max_steer = np.radians(30.0)  # [rad] max steering angle
 # L = 2.9  # [m] Wheel base of vehicle
 # dt = 0.1
@@ -311,7 +313,7 @@ class IntersectionSim:
         green_light_directions = []
         for i, color in enumerate(colors):
             if len(self.traffic_lights.flashing) == len(colors) and self.traffic_lights.flashing[
-                i] and color != "yellow":
+                i] and color is not "yellow":
                 return None
             if color in ["green", "green_left", "yellow"]:
                 this_road_green_light_directions = []
@@ -962,6 +964,134 @@ class SimWithPreComputedData(IntersectionSim):
                     # end the agent at its destination
                     self.finished_agent_id.append(i)
                     self.finished_agent += 1
+
+
+class SimWithLoadedData(IntersectionSim):
+    nuScenes_frame_rate = 2
+
+    def __init__(self, win, scale=15,
+                 window_h=1000, window_w=1000, trajectory=True,
+                 collision_speculate_skip_rate=15):
+        self.scale = scale
+        self.win = win
+        self.window_w = window_w
+        self.window_h = window_h
+        self.agents = []
+        self.frame_rate = self.nuScenes_frame_rate
+        self.model = VehicleModels.DefaultKinematicModel(dt=1.0)
+        self.simulate_dynamics = False
+        self.trajectory = trajectory
+        self.collision_detect = True
+        # self.traffic_lights = self.init_traffic_lights_from_map()
+        self.collision_speculate_skip_rate = collision_speculate_skip_rate  # the larger the faster and more likely to miss a cross collision
+
+        self.map_polys = []
+        self.drawn_lane_tokens = []
+        self.nusc_map = NuScenesMap(dataroot='data/sets/nuscenes', map_name='singapore-onenorth')
+        self.loader = NuScenesLoader(scale=scale,
+                                     frame_rate=self.nuScenes_frame_rate, window_h=1000, window_w=1000)
+
+    def loop_with_loaded_data(self, frame_rate=2):
+        # load agents from DataLoader
+        frame_list = self.loader.load_a_scene(scene_num=0)
+
+        last_time = time.time()
+
+        bgMap = Image(Point(self.window_w / 2,self.window_h / 2), "images/NuScene_map01_rescaled.png")
+        bgMap.draw(self.win)
+
+        self.draw_predicted_agent_traj((393.357, 1149.173, 0.419), (385.638, 1131.14, 0.419), 13, 15, 0.1)
+        self.draw_predicted_agent_traj((385.638, 1131.14, 0.419), (346.001, 1120.849, 1.868), 15, 15, 0.1 / 1.2)
+
+        while len(frame_list) > 0:
+            current_time = time.time()
+            if current_time - last_time > 1.0 / self.nuScenes_frame_rate:
+                # draw an agent on current frame
+                # pop the first frame
+                self.draw_agent_on_window_by_frame(frame_list)
+                frame_list.pop(0)
+                update(self.nuScenes_frame_rate)
+                last_time = current_time
+                # self.check_collision()
+            else:
+                time.sleep(1.0 / self.nuScenes_frame_rate / 40.0)
+
+        print("finished")
+
+    def draw_predicted_agent_traj(self, starting_pt, ending_pt, staring_v, ending_v, rate):
+        x, y, yaw = starting_pt
+        current_p = self.recenter((x, y), self.loader.offsets)
+        current_v = staring_v
+        current_a = 0
+        current_theta = yaw#normalize_angle(yaw - 0.5 * math.pi)  # direction_angle
+        ending_x, ending_y = self.recenter((ending_pt[0], ending_pt[1]), self.loader.offsets)
+        c_state = [current_p, current_v, current_a, current_theta]
+        t_state = [(ending_x, ending_y), ending_v, current_a, ending_pt[2]] # normalize_angle(ending_pt[2] - 0.5 * math.pi)]
+        motion_planner = MotionPlanning.PolynomialTrajectaryGenerator(current_state=c_state,
+                                                                      target_state=t_state,
+                                                                      speed_limit=23)  # 23m/s=50mph
+        motion_planner.fit_poly()
+        trajectory = motion_planner.get_states(rate)
+        for pt in trajectory[0]:
+            x, y = pt
+            aCircle = Circle(Point(x ,y), 1)
+            aCircle.setFill("yellow")
+            aCircle.draw(self.win)
+
+
+    def init_map_drawing(self, frame_list):
+        # only draw the map based on the 0 frame
+        for agent_parameters in frame_list[0]:
+            x, y, yaw, width, length, v, a = agent_parameters
+            self.draw_temp_poses_and_lane(x=x, y=y, yaw=yaw)
+
+    def draw_temp_poses_and_lane(self, x, y, yaw):
+        closest_lane = self.nusc_map.get_closest_lane(x, y, radius=2)
+        if closest_lane not in self.drawn_lane_tokens:
+            lane_record = self.nusc_map.get_arcline_path(closest_lane)
+            poses = arcline_path_utils.discretize_lane(lane_record, resolution_meters=1)
+            for pose in poses:
+                recentered_pose = self.recenter((pose[0], pose[1]), self.loader.offsets)
+                pt1, pt2, pt3, pt4 = generate_contour_pts((recentered_pose[0], recentered_pose[1]),
+                                                          10 * self.scale, 3.5 * self.scale, -pose[2])  # length, width
+                aPoly = Polygon(Point(pt1[0], pt1[1]),
+                                Point(pt2[0], pt2[1]),
+                                Point(pt3[0], pt3[1]),
+                                Point(pt4[0], pt4[1]))
+                aPoly.setFill("black")
+                aPoly.draw(self.win)
+                self.map_polys.append(aPoly)
+            self.drawn_lane_tokens.append(closest_lane)
+
+    def draw_agent_on_window_by_frame(self, frame_list):
+        for agent in self.agents:
+            poly = agent.agent_polys
+            poly.undraw()
+        self.agents = []
+        # self.init_map_drawing(frame_list)
+        for agent_parameters in frame_list[0]:
+            # for each agent
+            x, y, yaw, width, length, v, a = agent_parameters
+            offsets = self.loader.offsets
+            recentered_xy = self.recenter((x, y), offsets)
+            new_agent = Agent(x=recentered_xy[0],
+                              y=recentered_xy[1], yaw=-yaw,
+                              vx=v, length=length * self.scale, width=width * self.scale)
+            self.agents.append(new_agent)
+            # draw
+            agent_w = new_agent.width
+            agent_l = new_agent.length
+            pt1, pt2, pt3, pt4 = generate_contour_pts((new_agent.x, new_agent.y), agent_w, agent_l, new_agent.yaw)
+            new_agent.agent_polys = Polygon(Point(pt1[0], pt1[1]),
+                                            Point(pt2[0], pt2[1]),
+                                            Point(pt3[0], pt3[1]),
+                                            Point(pt4[0], pt4[1]))
+            new_agent.agent_polys.setFill("green")
+            new_agent.agent_polys.draw(self.win)
+
+    def recenter(self, pt, offsets):
+        x, y = pt
+        return - (x + offsets[0]) * self.scale + self.window_w / 2, (y + offsets[1]) * self.scale + self.window_h / 2
 
 
 class DynamicTest:

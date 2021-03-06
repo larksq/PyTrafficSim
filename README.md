@@ -18,6 +18,11 @@ python run.py -d 2
 python run.py -Demo 3
 ```
 
+Run in a verbose mode without animation
+```
+python run.py -v
+python run.py -d 3 -v
+```
 
 
 ### Demo 1: Default traffic light settings

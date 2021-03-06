@@ -14,7 +14,7 @@ class YieldOrStop:
         self.accelerate_rate = accelerate_rate
         self.vehicle_size = vehicle_size  # width, length
         self.action_delay = 0.8  # driving reaction time in seconds
-        self.distance_to_slow = 30  # in meters, also used for actions before stop line
+        self.distance_to_slow = 20  # in meters, also used for actions before stop line
         self.distance_to_stopline = 8
         self.min_distance_to_slow = 3  # in meters
         self.follow_agent = None
@@ -24,7 +24,7 @@ class YieldOrStop:
         self.max_etc_for_follow_collision = None
         self.skip_rate = skip_rate
         self.time_to_squeeze = 1.0
-        self.time_to_yield = 3.0
+        self.time_to_yield = 4.0
 
     def get_next_action(self, checking_agent, all_agents, idle_speed=30):
         """
@@ -48,10 +48,6 @@ class YieldOrStop:
         next_action = "normal"
         vigilant = False
 
-        if checking_agent.points_before_next_stop_line > int(
-                                self.distance_to_stopline * checking_agent.motion_planner.sample_rate * self.frame_rate):
-            return next_action
-
         for target_agent in all_agents:
             distance = euclidean_distance(pt1=(target_agent.x, target_agent.y),
                                           pt2=(checking_agent.x, checking_agent.y))
@@ -67,12 +63,20 @@ class YieldOrStop:
                 # collision_dist = (checking_agent.width + target_agent.width)/2
                 last_etc = self.etc
                 is_closet = False
-                collision = self.check_path_collision(trajectory_1=checking_agent_trajectory,
-                                                      trajectory_2=target_trajectory,
-                                                      v1=max(idle_speed * 0.8, checking_agent.vx),
-                                                      v2=target_agent.vx,
-                                                      skip_rate=self.skip_rate,
-                                                      start_from=max(checking_agent.points_before_next_stop_line, 0))
+                check_blocking = False
+                if target_agent.vx > self.alert_speed * 0.2:
+                    check_blocking = True
+                collision = self.check_path_collision_and_blocking(trajectory_1=checking_agent_trajectory,
+                                                                   trajectory_2=target_trajectory,
+                                                                   target_agent_pt=(target_agent.x, target_agent.y),
+                                                                   target_agent_yaw=target_agent.yaw,
+                                                                   v1=max(idle_speed * 0.8, checking_agent.vx),
+                                                                   v2=target_agent.vx,
+                                                                   skip_rate=self.skip_rate,
+                                                                   start_from=0, #max(
+                                                                       # checking_agent.points_before_next_stop_line, 0),
+                                                                   check_blocking=check_blocking)
+
                 if self.etc is not None:
                     if last_etc is None or self.etc < last_etc:
                         is_closet = True
@@ -81,7 +85,13 @@ class YieldOrStop:
                     if collision == "follow":
                         self.follow_agent = target_agent
                         next_action = "follow"
+                    elif collision == "blocking":
+                        next_action = "yield_squeeze"
+                        continue
                     else:
+                        if checking_agent.points_before_next_stop_line > int(
+                                                self.distance_to_stopline * checking_agent.motion_planner.sample_rate * self.frame_rate):
+                            return next_action
                         self.follow_agent = None
                         if collision:
                             # possible collision in the future
@@ -143,7 +153,9 @@ class YieldOrStop:
             self.action_delay = 0.8
         return next_action
 
-    def check_path_collision(self, trajectory_1, trajectory_2, v1=1, v2=1, skip_rate=15, start_from=0):
+    def check_path_collision_and_blocking(self, target_agent_pt, target_agent_yaw,
+                                          trajectory_1, trajectory_2, v1=1, v2=1, skip_rate=15, start_from=0,
+                                          check_blocking=False):
         """
         :param trajectory_1:
         :param trajectory_2:
@@ -172,6 +184,18 @@ class YieldOrStop:
                                   trajectory_1[0][i1 + 1][0] - trajectory_1[0][i1][0])
                 yaw2 = math.atan2(trajectory_2[0][i2 + 1][1] - trajectory_2[0][i2][1],
                                   trajectory_2[0][i2 + 1][0] - trajectory_2[0][i2][0])
+
+                if check_blocking:
+                    if check_collision_for_point_in_path(pt1=trajectory_1[0][i1],
+                                                         size1=unscaled_size,
+                                                         yaw1=yaw1,
+                                                         pt2=target_agent_pt,
+                                                         size2=unscaled_size,
+                                                         yaw2=target_agent_yaw,
+                                                         vertical_margin=3):
+
+                        return "blocking"
+
                 if check_collision_for_point_in_path(pt1=trajectory_1[0][i1],
                                                      size1=unscaled_size,
                                                      yaw1=yaw1,
@@ -196,3 +220,4 @@ class YieldOrStop:
                         return True
 
         return False
+
